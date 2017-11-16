@@ -21,9 +21,8 @@ class GrainElementExample extends GrainElement {
     // on the first initial change only properties in order before you are set
     // already set: type, header; still undefined: more, items
     // any other change afterwards can access everything
-    /* eslint-disable */
-    console.log(`header on grain-lit-element-example.${this.typeName} has been updated to ${newValue}`);
-    /* eslint-enable */
+    // eslint-disable-next-line
+    console.log(`header on ${this.localName}.${this.typeName} has been updated to ${newValue}`);
   }
 
   render() {
