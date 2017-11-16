@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1, user-scalable=yes">
+
+	<title>grain-element demo</title>
+	<script type="module" src="./grain-element-example.js"></script>
+
+</head>
+<body>
+<div style="width: 900px; margin: 0 auto;">
+	<grain-element-example header="poop"></grain-element-example>
+	<br /><br />
+	<button onclick="document.querySelector('grain-element-example').header = 'something new';">Change Header</button>
+	<button onclick="document.querySelector('grain-element-example').typeName = 'other type';">Change TypeName</button>
+</div>
+</body>
+</html>
