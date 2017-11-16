@@ -1,5 +1,4 @@
 export default class GrainElement extends HTMLElement {
-
   constructor() {
     super();
     this.__data = {};
@@ -96,17 +95,17 @@ export default class GrainElement extends HTMLElement {
     this._propertiesChanged(property, newValue, oldValue);
   }
 
-  _hasValidReflectToAttribute(propertyOptions) {
+  static _hasValidReflectToAttribute(propertyOptions) {
     return (propertyOptions && typeof propertyOptions.reflectToAttribute === 'string' && propertyOptions.reflectToAttribute !== '');
   }
 
   _makeGetterSetterForObject(property, propertyOptions) {
-    if (this._hasValidReflectToAttribute(propertyOptions)) {
+    if (this.constructor._hasValidReflectToAttribute(propertyOptions)) {
       this.__attributeToProperty[propertyOptions.reflectToAttribute] = property;
     }
     Object.defineProperty(this, property, {
       get() {
-        if (this._hasValidReflectToAttribute(propertyOptions)) {
+        if (this.constructor._hasValidReflectToAttribute(propertyOptions)) {
           if (propertyOptions.type === Object || propertyOptions.type === Array) {
             console.warn('reflectToAttribute does not support Object or array');
           }
@@ -119,13 +118,13 @@ export default class GrainElement extends HTMLElement {
         if (oldValue === value) {
           return;
         }
-        if (this._hasValidReflectToAttribute(propertyOptions)) {
+        if (this.constructor._hasValidReflectToAttribute(propertyOptions)) {
           if (propertyOptions.type === Object || propertyOptions.type === Array) {
             console.warn('reflectToAttribute does not support Object or array');
           }
           // attribute change will trigger attributeChangedCallback so no need to set data yourself
           if (propertyOptions.type === Boolean) {
-            value = value === false ? undefined : '';
+            value = value === false ? undefined : '';  //eslint-disable-line
           }
           if (typeof value === 'undefined') {
             this.removeAttribute(propertyOptions.reflectToAttribute);
@@ -133,7 +132,6 @@ export default class GrainElement extends HTMLElement {
             this.setAttribute(propertyOptions.reflectToAttribute, value);
           }
         } else {
-          const oldValue = this.__data[property];
           this.__data[property] = value;
           this._propertiesChanged(property, value, oldValue);
         }
@@ -150,7 +148,7 @@ export default class GrainElement extends HTMLElement {
     // set default values
     if (typeof propertyOptions.value !== 'undefined') {
       const newValue = (typeof propertyOptions.value === 'function') ? propertyOptions.value() : propertyOptions.value;
-      if (this._hasValidReflectToAttribute(propertyOptions)) {
+      if (this.constructor._hasValidReflectToAttribute(propertyOptions)) {
         this._set(property, newValue);
       } else {
         this[property] = newValue;
@@ -185,11 +183,12 @@ export default class GrainElement extends HTMLElement {
     }
   }
 
-  render() {
+  render() { // eslint-disable-line
     /* override this in your element implementation */
   }
 
-  _render(what, where) {
+
+  _render() { // eslint-disable-line
     /* override this in your element implementation */
   }
-};
+}

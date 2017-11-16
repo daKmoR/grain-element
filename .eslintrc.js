@@ -7,8 +7,7 @@ module.exports = {
     "no-console": ["error", {
       allow: ["warn", "error"]
     }],
-    "no-underscore-dangle": [2, {
-      "allowAfterThis": true
-    }]
+    "no-underscore-dangle": "off",
+    "import/extensions": ["error", "always"]
   }
 };

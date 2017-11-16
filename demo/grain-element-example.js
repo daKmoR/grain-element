@@ -7,7 +7,7 @@ class GrainElementExample extends GrainElement {
         type: String,
         value: 'Init name',
         observer: '_headerCalled',
-        reflectToAttribute: 'header'
+        reflectToAttribute: 'header',
       },
       typeName: {
         type: String,
@@ -33,7 +33,6 @@ class GrainElementExample extends GrainElement {
         type-name="${this.typeName}">
       </grain-element-example>`;
   }
-
 }
 
 customElements.define('grain-element-example', GrainElementExample);
