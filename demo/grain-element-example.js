@@ -25,13 +25,14 @@ class GrainElementExample extends GrainElement {
     console.log(`header on ${this.localName}.${this.typeName} has been updated to ${newValue}`);
   }
 
-  render() {
+  _render() {
     this.innerText = `My tag is now
       <grain-element-example
         header="${this.header}"
         type-name="${this.typeName}">
       </grain-element-example>`;
   }
+
 }
 
 customElements.define('grain-element-example', GrainElementExample);

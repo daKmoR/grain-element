@@ -179,14 +179,9 @@ export default class GrainElement extends HTMLElement {
       this.needsRender = true;
       await 0;
       this.needsRender = false;
-      this._render(this.render(), this.renderTarget);
+      this._render();
     }
   }
-
-  render() { // eslint-disable-line
-    /* override this in your element implementation */
-  }
-
 
   _render() { // eslint-disable-line
     /* override this in your element implementation */
