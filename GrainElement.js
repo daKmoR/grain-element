@@ -4,9 +4,10 @@ export default class GrainElement extends HTMLElement {
     this.__data = {};
     this.__attributeToProperty = {};
     this._observerMethods = {};
+    this.connected = false;
 
     const { properties } = this.constructor;
-    this._wait = true;
+    this.allPropertiesSetup = false;
     if (typeof properties === 'object') {
       this._propertiesCache = this.overrideSupport(this.constructor.properties);
       // create getters and setters
@@ -22,19 +23,17 @@ export default class GrainElement extends HTMLElement {
   }
 
   connectedCallback() {
-    if (typeof super.connectedCallback === 'function') {
-      super.connectedCallback();
-    }
-
+    this.connected = true;
     // read attribute values
     Object.keys(this.__attributeToProperty).forEach((attributeName) => {
       const property = this.__attributeToProperty[attributeName];
       if (this.hasAttribute(attributeName)) {
-        this[property] = this.getAttribute(attributeName);
+        this[property] = this._getAttribute(property);
+      } else {
+        this._setAttribute(property, this[property]);
       }
-      this[property] = this[property];
     });
-    delete this._wait;
+    this.allPropertiesSetup = true;
 
     if (!this.manualFirstRender) {
       this.update();
@@ -70,33 +69,54 @@ export default class GrainElement extends HTMLElement {
   }
 
   attributeChangedCallback(attributeName, oldValue, newValue) {
-    if (typeof super.attributeChangedCallback === 'function') {
-      super.attributeChangedCallback();
-    }
-    if (this.__attributeToProperty[attributeName]) {
+    if (oldValue !== newValue && this.__attributeToProperty[attributeName]) {
       const property = this.__attributeToProperty[attributeName];
       if (this[property] !== newValue) {
-        this._set(property, newValue, oldValue);
+        let settingValue = this._getAttribute(property, newValue);
+        this.__data[property] = settingValue;
+        this._propertiesChanged(property, settingValue, oldValue);
       }
     }
-  }
-
-  _set(property, newValue, oldValue) {
-    const { type, reflectToAttribute } = this._propertiesCache[property];
-    if (type.name === 'Boolean') {
-      if (newValue !== 'false') {
-        this.__data[property] = this.hasAttribute(reflectToAttribute);
-      } else {
-        this.__data[property] = false;
-      }
-    } else {
-      this.__data[property] = type(newValue);
-    }
-    this._propertiesChanged(property, newValue, oldValue);
   }
 
   static _hasValidReflectToAttribute(propertyOptions) {
     return (propertyOptions && typeof propertyOptions.reflectToAttribute === 'string' && propertyOptions.reflectToAttribute !== '');
+  }
+
+  _getAttribute(property, currentValue) {
+    const { type, reflectToAttribute } = this._propertiesCache[property];
+    if (['Json', 'String', 'Boolean'].indexOf(type) === -1) {
+      console.warn("reflectToAttribute only support 'String', 'Json' and 'Boolean'.", this._propertiesCache[property]);
+    }
+    let gettingValue = currentValue || this.getAttribute(property);
+    if (type === 'Boolean') {
+      gettingValue = this.hasAttribute(reflectToAttribute);
+    }
+    if (type === 'Json') {
+      gettingValue = JSON.parse(gettingValue.replace(/'/g, '"'));
+    }
+    return gettingValue;
+  }
+
+  _setAttribute(property, newValue) {
+    const { type, reflectToAttribute } = this._propertiesCache[property];
+    if (['Json', 'String', 'Boolean'].indexOf(type) === -1) {
+      console.warn("reflectToAttribute only support 'String', 'Json' and 'Boolean'.",
+        this._propertiesCache[property]);
+    }
+    let settingValue = newValue;
+    if (type === 'Boolean') {
+      settingValue = settingValue === false ? undefined : '';
+    }
+    if (type === 'Json') {
+      settingValue = JSON.stringify(newValue).replace(/"/g, "'");
+    }
+    // attribute change will trigger attributeChangedCallback so no need to set data yourself
+    if (typeof settingValue === 'undefined') {
+      this.removeAttribute(reflectToAttribute);
+    } else {
+      this.setAttribute(reflectToAttribute, settingValue);
+    }
   }
 
   _makeGetterSetterForObject(property, propertyOptions) {
@@ -106,34 +126,22 @@ export default class GrainElement extends HTMLElement {
     Object.defineProperty(this, property, {
       get() {
         if (this.constructor._hasValidReflectToAttribute(propertyOptions)) {
-          if (propertyOptions.type === Object || propertyOptions.type === Array) {
-            console.warn('reflectToAttribute does not support Object or array');
+          if (['Json', 'String', 'Boolean'].indexOf(propertyOptions.type) === -1) {
+            console.warn("reflectToAttribute only support 'String', 'Json' and 'Boolean'.", propertyOptions);
           }
         }
         return this.__data[property];
       },
-
-      set(value) {
+      set(newValue) {
         const oldValue = this.__data[property];
-        if (oldValue === value) {
-          return;
-        }
-        if (this.constructor._hasValidReflectToAttribute(propertyOptions)) {
-          if (propertyOptions.type === Object || propertyOptions.type === Array) {
-            console.warn('reflectToAttribute does not support Object or array');
-          }
-          // attribute change will trigger attributeChangedCallback so no need to set data yourself
-          if (propertyOptions.type === Boolean) {
-            value = value === false ? undefined : '';  //eslint-disable-line
-          }
-          if (typeof value === 'undefined') {
-            this.removeAttribute(propertyOptions.reflectToAttribute);
+        if (oldValue !== newValue) {
+          if (this.connected &&
+            this.constructor._hasValidReflectToAttribute(this._propertiesCache[property])) {
+            this._setAttribute(property, newValue);
           } else {
-            this.setAttribute(propertyOptions.reflectToAttribute, value);
+            this.__data[property] = newValue;
+            this._propertiesChanged(property, newValue, oldValue);
           }
-        } else {
-          this.__data[property] = value;
-          this._propertiesChanged(property, value, oldValue);
         }
       },
     });
@@ -147,20 +155,15 @@ export default class GrainElement extends HTMLElement {
     }
     // set default values
     if (typeof propertyOptions.value !== 'undefined') {
-      const newValue = (typeof propertyOptions.value === 'function') ? propertyOptions.value() : propertyOptions.value;
-      if (this.constructor._hasValidReflectToAttribute(propertyOptions)) {
-        this._set(property, newValue);
-      } else {
-        this[property] = newValue;
-      }
+      this[property] = (typeof propertyOptions.value === 'function') ? propertyOptions.value() : propertyOptions.value;
     }
   }
 
-  _propertiesChanged(property, value, oldValue) {
+  _propertiesChanged(property, newValue, oldValue) {
     if (this._observerMethods[property]) {
-      this._observerMethods[property](value, oldValue);
+      this._observerMethods[property](newValue, oldValue);
     }
-    if (!this._wait) {
+    if (this.allPropertiesSetup === true) {
       this.update();
     }
   }
