@@ -1,4 +1,40 @@
 export default class GrainElement extends HTMLElement {
+  static get properties() {
+    return {};
+  }
+
+  static get observedAttributes() {
+    const { properties } = this;
+    if (typeof properties !== 'object') {
+      console.warn('Properties should be an object');
+
+      return [];
+    }
+
+    return Object
+      .keys(properties)
+      .filter(property => this._isReflectToAttributeValid(properties[property]))
+      .map(property => properties[property].reflectToAttribute);
+  }
+
+  static overrideDefaultPropertyValues(properties) {
+    this._overrideValues = properties;
+  }
+
+  static _isReflectToAttributeValid(propertyOptions) {
+    return propertyOptions &&
+      typeof propertyOptions.reflectToAttribute === 'string' &&
+      propertyOptions.reflectToAttribute !== '';
+  }
+
+  static _assertReflectToAttributeTypeSupported(property, type) {
+    const supportedTypes = ['Json', 'String', 'Boolean', 'Number'];
+    if (supportedTypes.indexOf(type) === -1) {
+      console.warn(`${this.name}: reflectToAttribute only supports ${supportedTypes.join(', ')}.
+        "${type}" found for property "${property}".`);
+    }
+  }
+
   constructor() {
     super();
     this.__data = {};
@@ -10,13 +46,16 @@ export default class GrainElement extends HTMLElement {
     this.allPropertiesSetup = false;
     if (typeof properties === 'object') {
       this._propertiesCache = this.overrideSupport(this.constructor.properties);
-      // create getters and setters
+      // initializes all properties
       Object.keys(this._propertiesCache).forEach((property) => {
         const propertyOptions = this._propertiesCache[property];
         if (typeof propertyOptions === 'object') {
-          this._makeGetterSetterForObject(property, propertyOptions);
+          this._initProperty(property, propertyOptions);
         } else {
-          console.warn(`${this.localName}: the property ${property} should be an object.`);
+          console.warn(
+            `${this.constructor.name}: a property options should be an object.`,
+            `"${typeof propertyOptions}" found for property "${property}"`,
+          );
         }
       });
     }
@@ -35,30 +74,16 @@ export default class GrainElement extends HTMLElement {
     });
     this.allPropertiesSetup = true;
 
-    if (!this.manualFirstRender) {
-      this.update();
-    }
+    this.connectedUpdate();
   }
 
-  static get observedAttributes() {
-    const { properties } = this;
-    const attributes = [];
-    if (typeof properties === 'object') {
-      Object.keys(properties).forEach((property) => {
-        const propertyOptions = properties[property];
-        if (propertyOptions && typeof propertyOptions.reflectToAttribute === 'string' && propertyOptions.reflectToAttribute !== '') {
-          attributes.push(propertyOptions.reflectToAttribute);
-        }
-      });
-    }
-    return attributes;
-  }
-
-  static overrideDefaultPropertyValues(properties) {
-    this._overrideValues = properties;
+  connectedUpdate() {
+    this.update();
   }
 
   overrideSupport(properties) {
+    // since properties is a getter, it's possible to just assign a result property
+    // and it will create a copy of the properties
     const result = properties;
     if (typeof this.constructor._overrideValues === 'object') {
       Object.keys(this.constructor._overrideValues).forEach((property) => {
@@ -71,47 +96,39 @@ export default class GrainElement extends HTMLElement {
   attributeChangedCallback(attributeName, oldValue, newValue) {
     if (oldValue !== newValue && this.__attributeToProperty[attributeName]) {
       const property = this.__attributeToProperty[attributeName];
-      if (this[property] !== newValue) {
-        let settingValue = this._getAttribute(property, newValue);
-        this.__data[property] = settingValue;
-        this._propertiesChanged(property, settingValue, oldValue);
+      const newPropertyValue = this._getAttribute(property, newValue);
+      if (this.__data[property] !== newPropertyValue) {
+        this._setProperty(property, newPropertyValue);
       }
     }
   }
 
-  static _hasValidReflectToAttribute(propertyOptions) {
-    return (propertyOptions && typeof propertyOptions.reflectToAttribute === 'string' && propertyOptions.reflectToAttribute !== '');
-  }
-
   _getAttribute(property, currentValue) {
     const { type, reflectToAttribute } = this._propertiesCache[property];
-    if (['Json', 'String', 'Boolean'].indexOf(type) === -1) {
-      console.warn("reflectToAttribute only support 'String', 'Json' and 'Boolean'.", this._propertiesCache[property]);
-    }
     let gettingValue = currentValue || this.getAttribute(property);
     if (type === 'Boolean') {
       gettingValue = this.hasAttribute(reflectToAttribute);
     }
+    if (type === 'Number') {
+      gettingValue = gettingValue ? parseInt(gettingValue, 10) : undefined;
+    }
     if (type === 'Json') {
-      gettingValue = JSON.parse(gettingValue.replace(/'/g, '"'));
+      gettingValue = gettingValue ? JSON.parse(gettingValue.replace(/'/g, '"')) : undefined;
     }
     return gettingValue;
   }
 
   _setAttribute(property, newValue) {
     const { type, reflectToAttribute } = this._propertiesCache[property];
-    if (['Json', 'String', 'Boolean'].indexOf(type) === -1) {
-      console.warn("reflectToAttribute only support 'String', 'Json' and 'Boolean'.",
-        this._propertiesCache[property]);
-    }
     let settingValue = newValue;
     if (type === 'Boolean') {
       settingValue = settingValue === false ? undefined : '';
     }
     if (type === 'Json') {
-      settingValue = JSON.stringify(newValue).replace(/"/g, "'");
+      settingValue = newValue ? JSON.stringify(newValue).replace(/"/g, "'") : undefined;
     }
     // attribute change will trigger attributeChangedCallback so no need to set data yourself
+    // undefined for an attribute value means it can be removed
     if (typeof settingValue === 'undefined') {
       this.removeAttribute(reflectToAttribute);
     } else {
@@ -119,49 +136,85 @@ export default class GrainElement extends HTMLElement {
     }
   }
 
-  _makeGetterSetterForObject(property, propertyOptions) {
-    if (this.constructor._hasValidReflectToAttribute(propertyOptions)) {
-      this.__attributeToProperty[propertyOptions.reflectToAttribute] = property;
+  _initProperty(propertyName, propertyOptions) {
+    this._createGetterSetterForObject(propertyName, propertyOptions);
+
+    if ('reflectToAttribute' in propertyOptions) {
+      this._createReflectToAttribute(propertyName, propertyOptions);
     }
+
+    if ('observer' in propertyOptions) {
+      this._createObserver(propertyName, propertyOptions);
+    }
+
+    if ('value' in propertyOptions) {
+      this._setDefaultValue(propertyName, propertyOptions);
+    }
+  }
+
+  _createGetterSetterForObject(property) {
+    if (property in this) {
+      // property is already defined
+      return;
+    }
+
     Object.defineProperty(this, property, {
       get() {
-        if (this.constructor._hasValidReflectToAttribute(propertyOptions)) {
-          if (['Json', 'String', 'Boolean'].indexOf(propertyOptions.type) === -1) {
-            console.warn("reflectToAttribute only support 'String', 'Json' and 'Boolean'.", propertyOptions);
-          }
-        }
         return this.__data[property];
       },
       set(newValue) {
         const oldValue = this.__data[property];
         if (oldValue !== newValue) {
-          if (this.connected &&
-            this.constructor._hasValidReflectToAttribute(this._propertiesCache[property])) {
+          const propertyOptions = this._propertiesCache[property];
+          if (this.connected && this.__attributeToProperty[propertyOptions.reflectToAttribute]) {
             this._setAttribute(property, newValue);
           } else {
-            this.__data[property] = newValue;
-            this._propertiesChanged(property, newValue, oldValue);
+            this._setProperty(property, newValue);
           }
         }
       },
     });
+  }
 
-    if (propertyOptions.observer) {
-      if (this[propertyOptions.observer]) {
-        this._observerMethods[property] = this[propertyOptions.observer].bind(this);
-      } else {
-        console.warn(`Method ${propertyOptions.observer} not defined!`);
-      }
+  _createReflectToAttribute(property, propertyOptions) {
+    if (this.constructor._isReflectToAttributeValid(propertyOptions)) {
+      this.constructor._assertReflectToAttributeTypeSupported(property, propertyOptions.type);
+
+      this.__attributeToProperty[propertyOptions.reflectToAttribute] = property;
+    } else {
+      console.warn(
+        `${this.constructor.name}: reflectToAttribute should be a non-empty string.`,
+        `"${typeof propertyOptions.reflectToAttribute}" found for property "${property}"`,
+      );
     }
-    // set default values
-    if (typeof propertyOptions.value !== 'undefined') {
-      this[property] = (typeof propertyOptions.value === 'function') ? propertyOptions.value() : propertyOptions.value;
+  }
+
+  _createObserver(property, { observer }) {
+    if (this[observer]) {
+      this._observerMethods[property] = this[observer];
+    } else {
+      console.warn(
+        `${this.constructor.name}:`,
+        `method "${observer}" not found for property "${property}"`,
+      );
     }
+  }
+
+  _setDefaultValue(property, propertyOptions) {
+    this[property] = (typeof propertyOptions.value === 'function')
+      ? propertyOptions.value()
+      : propertyOptions.value;
+  }
+
+  _setProperty(property, newValue) {
+    const oldValue = this.__data[property];
+    this.__data[property] = newValue;
+    this._propertiesChanged(property, newValue, oldValue);
   }
 
   _propertiesChanged(property, newValue, oldValue) {
     if (this._observerMethods[property]) {
-      this._observerMethods[property](newValue, oldValue);
+      this._observerMethods[property].call(this, newValue, oldValue);
     }
     if (this.allPropertiesSetup === true) {
       this.update();
